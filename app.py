@@ -33,12 +33,27 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Estilo simples e legível
+# Estilo escuro + cyan (estética mapa rede/dados)
 st.markdown("""
 <style>
+    /* Fundo geral */
+    .stApp { background: linear-gradient(180deg, #0F1626 0%, #141d2e 100%); }
+    [data-testid="stHeader"] { background: rgba(15, 22, 38, 0.9); }
+    [data-testid="stSidebar"] { background: #0d1321; }
+    [data-testid="stSidebar"] .stMarkdown { color: #b8c5d6; }
+    /* Títulos e texto em destaque */
+    h1, h2, h3 { color: #47E0E0 !important; font-weight: 600; }
+    .stMarkdown p, .stMarkdown span { color: #c8d4e3; }
+    /* Métricas */
+    div[data-testid="stMetricValue"] { color: #47E0E0 !important; font-size: 1.4rem; }
+    div[data-testid="stMetricLabel"] { color: #8b9cb8; }
+    /* Tabela */
     .stDataFrame { font-size: 0.9em; }
-    div[data-testid="stMetricValue"] { font-size: 1.4rem; }
-    .tabela-info { padding: 0.5rem 1rem; background: #f0f2f6; border-radius: 0.5rem; margin: 0.5rem 0; }
+    [data-testid="stDataFrame"] { border: 1px solid #2a3a52; border-radius: 8px; }
+    /* Info box */
+    .stAlert { background: #1a2332; border-left: 4px solid #47E0E0; }
+    /* Blocos */
+    div[data-testid="stVerticalBlock"] > div { background: transparent; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -220,23 +235,47 @@ def main():
                 else:
                     lat_c, lon_c = -14.5, -51.5
                     zoom = 4
-                mapa = folium.Map(location=[lat_c, lon_c], zoom_start=zoom, tiles="OpenStreetMap")
+                # Mapa estilo escuro + cyan (estética rede/dados)
+                tiles_dark = (
+                    "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                )
+                attr_dark = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                mapa = folium.Map(
+                    location=[lat_c, lon_c],
+                    zoom_start=zoom,
+                    tiles=tiles_dark,
+                    attr=attr_dark,
+                    control_scale=True,
+                )
                 for _, row in df_map.iterrows():
                     pop = int(row.get("populacao", 0) or 0)
-                    radius = min(30, max(6, (pop / 1e6) * 20)) if pop else 8
+                    radius = min(28, max(5, (pop / 1e6) * 18)) if pop else 6
                     tooltip = (
-                        f"<b>{row.get('nome_municipio', '')} ({row.get('sigla_uf', '')})</b><br>"
+                        f"<b style='color:#47E0E0'>{row.get('nome_municipio', '')} ({row.get('sigla_uf', '')})</b><br>"
                         f"População: {pop:,}<br>"
                         f"Óbitos: {int(row.get('total_obitos', 0) or 0):,}<br>"
                         f"Nascidos vivos: {int(row.get('nascidos_vivos', 0) or 0):,}"
                     )
+                    loc = [row["latitude"], row["longitude"]]
+                    # Glow: círculo maior semi-transparente
                     folium.CircleMarker(
-                        location=[row["latitude"], row["longitude"]],
-                        radius=radius,
-                        color="#2563eb",
+                        location=loc,
+                        radius=radius + 8,
+                        color="#47E0E0",
                         fill=True,
-                        fillColor="#3b82f6",
-                        fillOpacity=0.6,
+                        fillColor="#47E0E0",
+                        fillOpacity=0.15,
+                        weight=0,
+                    ).add_to(mapa)
+                    # Ponto principal cyan
+                    folium.CircleMarker(
+                        location=loc,
+                        radius=radius,
+                        color="#47E0E0",
+                        fill=True,
+                        fillColor="#47E0E0",
+                        fillOpacity=0.75,
+                        weight=1,
                         tooltip=folium.Tooltip(tooltip, sticky=True),
                     ).add_to(mapa)
                 st.subheader("🗺️ Mapa — municípios com dados")

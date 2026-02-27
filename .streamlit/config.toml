@@ -1,0 +1,11 @@
+# IntegraGov - Tema escuro estilo "data/network"
+[theme]
+base = "dark"
+primaryColor = "#47E0E0"
+backgroundColor = "#0F1626"
+secondaryBackgroundColor = "#1a2332"
+textColor = "#e8ecf0"
+font = "sans serif"
+
+[server]
+headless = true

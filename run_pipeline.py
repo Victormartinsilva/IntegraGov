@@ -48,7 +48,7 @@ def run_fase1(ano: int = 2024, amostra_municipios: list[int] | None = None, todo
         return
     ibge.salvar_bronze_municipios(df_mun)
 
-    # População: todos (API N6all), amostra customizada, ou amostra por tamanho (padrão 100)
+    # População: todos (API N6all), amostra customizada, ou amostra diversificada por UF (evita só RO no mapa)
     AMOSTRA_PADRAO = 100
     n_amostra = amostra_n if amostra_n is not None else AMOSTRA_PADRAO
     codigos = None
@@ -57,8 +57,16 @@ def run_fase1(ano: int = 2024, amostra_municipios: list[int] | None = None, todo
     elif amostra_municipios is not None and len(amostra_municipios) > 0:
         codigos = [int(x) for x in amostra_municipios]
     elif len(df_mun) > n_amostra:
-        codigos = df_mun["cod_mun_ibge_7"].astype(int).head(n_amostra).tolist()
-        logger.info("Usando amostra de %d municípios para população (use --amostra N ou --todos-municipios).", len(codigos))
+        # Amostra por UF para diversificar (senão os primeiros 100 são só RO/AC)
+        por_uf = max(1, n_amostra // 27)  # ~4 por estado para 100
+        df_amostra = df_mun.groupby("sigla_uf", group_keys=False).apply(
+            lambda g: g.head(por_uf)
+        ).head(n_amostra)
+        codigos = df_amostra["cod_mun_ibge_7"].astype(int).tolist()
+        logger.info(
+            "Usando amostra de %d municípios (%d UFs) para população (use --amostra N ou --todos-municipios).",
+            len(codigos), df_amostra["sigla_uf"].nunique()
+        )
 
     df_pop = ibge.obter_populacao_municipios(ano=ano, codigos_municipios=codigos)
     if df_pop.empty:
