@@ -1,0 +1,61 @@
+# IntegraGov - Git ignore
+
+# Ambiente Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Dados locais (cada dev/ambiente gera os seus)
+data/bronze/*
+data/silver/*
+data/gold/*
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+data/*.db
+data/*.parquet
+data/*.csv
+!data/.gitkeep
+
+# IDE e SO
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs e temporários
+*.log
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Opcional: descomente para versionar dados de exemplo
+# !data/bronze/.gitkeep
+# !data/silver/.gitkeep
+# !data/gold/.gitkeep
