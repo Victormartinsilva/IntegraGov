@@ -2,6 +2,12 @@
 
 Sistema de integração, cruzamento e análise de bases de dados públicas do Brasil, com foco em políticas públicas e gestão governamental. Arquitetura **Data Lakehouse** (Bronze → Silver → Gold), execução local e interface web com mapa e tabelas.
 
+### Aplicação online
+
+**[Acesse a aplicação IntegraGov](https://integragov.streamlit.app/)**
+
+[![IntegraGov - Visualização dos Dados Gold](docs/app-screenshot.png)](https://integragov.streamlit.app/)
+
 ## Objetivo
 
 Centralizar dados de **IBGE** e **saúde (DATASUS)**, padronizar pelo código de município (7 dígitos IBGE) e disponibilizar indicadores para análise e dashboards.
