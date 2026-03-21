@@ -218,7 +218,7 @@ def _chart_top_bar(df: pd.DataFrame, col: str, label_col: str, title: str, color
     )
     fig.update_traces(texttemplate=f"%{{text:{fmt}}}", textposition="outside", marker_line_width=0)
     fig.update_layout(**_plotly_layout())
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _chart_scatter(df: pd.DataFrame, x: str, y: str, hover: str, title: str, color: str, xlabel: str = "", ylabel: str = "") -> None:
@@ -234,7 +234,7 @@ def _chart_scatter(df: pd.DataFrame, x: str, y: str, hover: str, title: str, col
         opacity=0.65,
     )
     fig.update_layout(**_plotly_layout(xaxis_title=xlabel, yaxis_title=ylabel))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _chart_bar_uf(df: pd.DataFrame, col: str, title: str, color: str) -> None:
@@ -250,7 +250,7 @@ def _chart_bar_uf(df: pd.DataFrame, col: str, title: str, color: str) -> None:
     )
     fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside", marker_line_width=0)
     fig.update_layout(**_plotly_layout())
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 # ---------------------------------------------------------------------------
@@ -616,7 +616,7 @@ def tab_dados_brutos(db_path: str, uf: str, ano) -> None:
         if col in df.columns:
             col_cfg[col] = st.column_config.NumberColumn(label, format=fmt)
 
-    st.dataframe(df, use_container_width=True, hide_index=True, column_config=col_cfg or None)
+    st.dataframe(df, width="stretch", hide_index=True, column_config=col_cfg or None)
 
     csv = df.to_csv(index=False, sep=";", encoding="utf-8-sig")
     st.download_button(
