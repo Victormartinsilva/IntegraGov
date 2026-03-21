@@ -92,10 +92,13 @@ class GoldTransform:
         with get_connection() as conn:
             init_schema(conn)
             data_carga = datetime.now().isoformat()
+            anos = df["ano"].dropna().unique().tolist()
+            for a in anos:
+                conn.execute("DELETE FROM gold_indicadores_saude_municipio WHERE ano = ?", (int(a),))
             for _, row in df.iterrows():
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO gold_indicadores_saude_municipio
+                    INSERT INTO gold_indicadores_saude_municipio
                     (cod_mun_ibge_7, ano, populacao, total_internacoes, total_obitos, nascidos_vivos,
                      taxa_internacao_100k, taxa_obitos_100k, data_carga)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -114,6 +117,75 @@ class GoldTransform:
                 )
             logger.info("Gold: %d registros persistidos.", len(df))
 
+    def indicadores_educacao_por_municipio(
+        self,
+        df_educacao: pd.DataFrame,
+        df_populacao: pd.DataFrame | None = None,
+        ano: int | None = None,
+    ) -> pd.DataFrame:
+        """
+        Monta Gold de educação por município (matrículas, docentes, escolas).
+        Se df_populacao for passado, calcula taxa de matrículas por 1000 hab.
+        """
+        if df_educacao.empty or "cod_mun_ibge_7" not in df_educacao.columns:
+            return pd.DataFrame()
+        gold = df_educacao.copy()
+        if ano and "ano" in gold.columns:
+            gold = gold[gold["ano"] == ano]
+        agg_dict = {"matriculas": "sum"}
+        if "docentes" in gold.columns:
+            agg_dict["docentes"] = "sum"
+        if "escolas" in gold.columns:
+            agg_dict["escolas"] = "sum"
+        gold = gold.groupby(["cod_mun_ibge_7", "ano"], as_index=False).agg(agg_dict)
+        if "docentes" not in gold.columns:
+            gold["docentes"] = None
+        if "escolas" not in gold.columns:
+            gold["escolas"] = None
+        if df_populacao is not None and not df_populacao.empty and "populacao" in df_populacao.columns:
+            pop = df_populacao.copy()
+            if ano and "ano" in pop.columns:
+                pop = pop[pop["ano"] == ano]
+            pop = pop.groupby("cod_mun_ibge_7", as_index=False)["populacao"].max()
+            gold = gold.merge(pop, on="cod_mun_ibge_7", how="left")
+            gold["taxa_matriculas_por_1000_hab"] = (
+                gold["matriculas"] / gold["populacao"].replace(0, pd.NA) * 1000
+            ).round(2)
+            gold = gold.drop(columns=["populacao"], errors="ignore")
+        else:
+            gold["taxa_matriculas_por_1000_hab"] = None
+        gold["data_carga"] = datetime.now().isoformat()
+        return gold
+
+    def persistir_gold_educacao_no_banco(self, df: pd.DataFrame) -> None:
+        """Insere/atualiza tabela gold_indicadores_educacao_municipio (remove dados do ano antes)."""
+        if df.empty:
+            return
+        with get_connection() as conn:
+            init_schema(conn)
+            data_carga = datetime.now().isoformat()
+            anos = df["ano"].dropna().unique().tolist()
+            for a in anos:
+                conn.execute("DELETE FROM gold_indicadores_educacao_municipio WHERE ano = ?", (int(a),))
+            for _, row in df.iterrows():
+                conn.execute(
+                    """
+                    INSERT INTO gold_indicadores_educacao_municipio
+                    (cod_mun_ibge_7, ano, matriculas, docentes, escolas, taxa_matriculas_por_1000_hab, data_carga)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["cod_mun_ibge_7"],
+                        int(row["ano"]),
+                        int(row.get("matriculas", 0) or 0),
+                        int(row.get("docentes", 0) or 0) if pd.notna(row.get("docentes")) else None,
+                        int(row.get("escolas", 0) or 0) if pd.notna(row.get("escolas")) else None,
+                        float(row["taxa_matriculas_por_1000_hab"]) if pd.notna(row.get("taxa_matriculas_por_1000_hab")) else None,
+                        data_carga,
+                    ),
+                )
+            logger.info("Gold educação: %d registros persistidos.", len(df))
+
     def salvar_gold_parquet(self, df: pd.DataFrame, nome: str = "indicadores_saude_municipio") -> Path:
         """Salva Gold em parquet e CSV para exportação."""
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -123,3 +195,82 @@ class GoldTransform:
         df.to_csv(path_csv, index=False, sep=";", encoding="utf-8-sig")
         logger.info("Gold salvo: %s", path_pq)
         return path_pq
+
+    def indicadores_pib_por_municipio(
+        self, df_pib: pd.DataFrame, ano: int | None = None
+    ) -> pd.DataFrame:
+        """
+        Processa dados de PIB municipal (IBGE SIDRA 5938) para a camada Gold.
+        Colunas esperadas: cod_mun_ibge_7, ano, pib_total_mil_reais, pib_per_capita.
+        """
+        if df_pib.empty or "cod_mun_ibge_7" not in df_pib.columns:
+            return pd.DataFrame()
+        gold = df_pib.copy()
+        if ano and "ano" in gold.columns:
+            gold = gold[gold["ano"] == ano]
+        if "pib_total_mil_reais" not in gold.columns:
+            gold["pib_total_mil_reais"] = None
+        if "pib_per_capita" not in gold.columns:
+            gold["pib_per_capita"] = None
+        if "ano" not in gold.columns:
+            gold["ano"] = ano
+        gold = gold.groupby(["cod_mun_ibge_7", "ano"], as_index=False).agg(
+            pib_total_mil_reais=("pib_total_mil_reais", "max"),
+            pib_per_capita=("pib_per_capita", "max"),
+        )
+        gold["data_carga"] = datetime.now().isoformat()
+        logger.info("Gold PIB: %d municípios.", len(gold))
+        return gold
+
+    def persistir_gold_pib_no_banco(self, df: pd.DataFrame) -> None:
+        """Insere/atualiza tabela gold_pib_municipio."""
+        if df.empty:
+            return
+        with get_connection() as conn:
+            init_schema(conn)
+            data_carga = datetime.now().isoformat()
+            anos = df["ano"].dropna().unique().tolist()
+            for a in anos:
+                conn.execute("DELETE FROM gold_pib_municipio WHERE ano = ?", (int(a),))
+            for _, row in df.iterrows():
+                conn.execute(
+                    """
+                    INSERT INTO gold_pib_municipio
+                    (cod_mun_ibge_7, ano, pib_total_mil_reais, pib_per_capita, data_carga)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["cod_mun_ibge_7"],
+                        int(row["ano"]),
+                        float(row["pib_total_mil_reais"]) if pd.notna(row.get("pib_total_mil_reais")) else None,
+                        float(row["pib_per_capita"]) if pd.notna(row.get("pib_per_capita")) else None,
+                        data_carga,
+                    ),
+                )
+            logger.info("Gold PIB: %d registros persistidos.", len(df))
+
+    def persistir_gold_transparencia_no_banco(self, df: pd.DataFrame) -> None:
+        """Insere/atualiza tabela gold_transparencia_transferencias."""
+        if df.empty or "cod_mun_ibge_7" not in df.columns:
+            return
+        with get_connection() as conn:
+            init_schema(conn)
+            data_carga = datetime.now().isoformat()
+            anos = df["ano"].dropna().unique().tolist()
+            for a in anos:
+                conn.execute("DELETE FROM gold_transparencia_transferencias WHERE ano = ?", (int(a),))
+            for _, row in df.iterrows():
+                conn.execute(
+                    """
+                    INSERT INTO gold_transparencia_transferencias
+                    (cod_mun_ibge_7, ano, total_transferencias_reais, data_carga)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        row["cod_mun_ibge_7"],
+                        int(row["ano"]),
+                        float(row.get("total_transferencias_reais", 0) or 0),
+                        data_carga,
+                    ),
+                )
+            logger.info("Gold Transparência: %d registros persistidos.", len(df))

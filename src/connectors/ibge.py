@@ -13,6 +13,9 @@ from config.settings import (
     IBGE_MUNICIPIOS_URL,
     IBGE_AGREGADO_POPULACAO,
     IBGE_VARIAVEL_POPULACAO,
+    IBGE_AGREGADO_PIB,
+    IBGE_VARIAVEL_PIB_TOTAL,
+    IBGE_VARIAVEL_PIB_PERCAPITA,
     BRONZE_DIR,
 )
 
@@ -153,4 +156,76 @@ class IBGEConnector:
         df.to_parquet(path_parquet, index=False)
         df.to_csv(path_csv, index=False, sep=";", encoding="utf-8-sig")
         logger.info("Bronze IBGE população salvo: %s", path_parquet)
+        return path_parquet
+
+    def obter_pib_municipios(self, ano: int) -> pd.DataFrame:
+        """
+        Obtém PIB municipal via IBGE SIDRA tabela 5938.
+        Variáveis: 37 (PIB total R$ mil) e 498 (PIB per capita R$).
+        Nota: dados disponíveis com ~2 anos de defasagem (último ano: 2021).
+        """
+        url = (
+            f"{IBGE_BASE_URL}/agregados/{IBGE_AGREGADO_PIB}/periodos/{ano}"
+            f"/variaveis/{IBGE_VARIAVEL_PIB_TOTAL}|{IBGE_VARIAVEL_PIB_PERCAPITA}"
+            "?localidades=N6[N6all]&formato=json"
+        )
+        try:
+            r = requests.get(url, timeout=120)
+            r.raise_for_status()
+            data = r.json()
+        except requests.RequestException as e:
+            logger.exception("Erro ao obter PIB municipal IBGE: %s", e)
+            raise
+
+        # Parse: cada item é uma variável (37 ou 498), com resultados.series[].localidade.id + serie.{ano}
+        pib_total: dict[str, float] = {}
+        pib_percapita: dict[str, float] = {}
+        for item in data:
+            var_id = str(item.get("id", ""))
+            for res in item.get("resultados", []):
+                for serie in res.get("series", []):
+                    loc = serie.get("localidade", {})
+                    cod = str(loc.get("id", "")).zfill(7)
+                    if len(cod) != 7:
+                        continue
+                    serie_vals = serie.get("serie") or {}
+                    val_str = serie_vals.get(str(ano))
+                    if val_str is None and serie_vals:
+                        anos_disp = [k for k in serie_vals if k.isdigit() and len(k) == 4]
+                        if anos_disp:
+                            val_str = serie_vals[max(anos_disp, key=int)]
+                    if val_str is None:
+                        continue
+                    try:
+                        val = float(str(val_str).replace(".", "").replace(",", "."))
+                    except ValueError:
+                        continue
+                    if var_id == str(IBGE_VARIAVEL_PIB_TOTAL):
+                        pib_total[cod] = val
+                    elif var_id == str(IBGE_VARIAVEL_PIB_PERCAPITA):
+                        pib_percapita[cod] = val
+
+        codigos = set(pib_total) | set(pib_percapita)
+        rows = [
+            {
+                "cod_mun_ibge_7": cod,
+                "ano": ano,
+                "pib_total_mil_reais": pib_total.get(cod),
+                "pib_per_capita": pib_percapita.get(cod),
+            }
+            for cod in codigos
+        ]
+        df = pd.DataFrame(rows)
+        logger.info("PIB municipal: %d municípios (ano %d).", len(df), ano)
+        return df
+
+    def salvar_bronze_pib(self, df: pd.DataFrame, ano: int) -> Path:
+        """Salva PIB municipal na camada Bronze."""
+        self.bronze_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path_parquet = self.bronze_dir / f"ibge_pib_{ano}_{ts}.parquet"
+        path_csv = self.bronze_dir / f"ibge_pib_{ano}_{ts}.csv"
+        df.to_parquet(path_parquet, index=False)
+        df.to_csv(path_csv, index=False, sep=";", encoding="utf-8-sig")
+        logger.info("Bronze PIB salvo: %s", path_parquet)
         return path_parquet

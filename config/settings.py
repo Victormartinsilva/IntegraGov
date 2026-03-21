@@ -32,9 +32,24 @@ IBGE_VARIAVEL_POPULACAO = 9324
 # DEMAS / OpenDataSUS (Ministério da Saúde)
 DATASUS_API_BASE = "https://apidadosabertos.saude.gov.br/v1"
 
+# INEP (Educação)
+INEP_SINOPSES_BASE = "https://download.inep.gov.br/dados_abertos/sinopses_estatisticas"
+INEP_SINOPSE_URL = f"{INEP_SINOPSES_BASE}/sinopses_estatisticas_censo_escolar_{{ano}}.zip"
+INEP_MICRODADOS_BASE = "https://download.inep.gov.br/dados_abertos"
+INEP_MICRODADOS_CENSO_URL = f"{INEP_MICRODADOS_BASE}/microdados_censo_escolar_{{ano}}.zip"
+
 # Fase atual do MVP (1=Saúde+Demografia, 2=+Educação, 3=+Transparência)
 FASE_MVP = int(os.getenv("INTEGRAGOV_FASE", "1"))
 
 # Log e ambiente
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 DEBUG = os.getenv("INTEGRAGOV_DEBUG", "0").lower() in ("1", "true", "yes")
+
+# IBGE - PIB Municipal (SIDRA tabela 5938; dados disponíveis até ~2021)
+IBGE_AGREGADO_PIB = 5938
+IBGE_VARIAVEL_PIB_TOTAL = 37       # PIB total, a preços correntes (R$ mil)
+IBGE_VARIAVEL_PIB_PERCAPITA = 498  # PIB per capita, a preços correntes (R$ 1,00)
+
+# Portal da Transparência (requer chave gratuita: portaldatransparencia.gov.br/api-de-dados)
+TRANSPARENCIA_API_BASE = "https://api.portaldatransparencia.gov.br/api-de-dados"
+TRANSPARENCIA_API_KEY = os.getenv("TRANSPARENCIA_API_KEY", "")

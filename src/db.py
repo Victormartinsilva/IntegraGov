@@ -60,6 +60,19 @@ def init_schema(conn: sqlite3.Connection) -> None:
         FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
     );
 
+    -- Silver: educação por município/ano (INEP Censo Escolar)
+    CREATE TABLE IF NOT EXISTS silver_inep_educacao (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cod_mun_ibge_7 TEXT NOT NULL,
+        ano INTEGER NOT NULL,
+        matriculas INTEGER,
+        docentes INTEGER,
+        escolas INTEGER,
+        data_carga TEXT,
+        UNIQUE(cod_mun_ibge_7, ano),
+        FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
+    );
+
     -- Gold: indicadores de saúde por município (por 100k hab, etc.)
     CREATE TABLE IF NOT EXISTS gold_indicadores_saude_municipio (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,9 +88,49 @@ def init_schema(conn: sqlite3.Connection) -> None:
         FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
     );
 
+    -- Gold: indicadores de educação por município (INEP)
+    CREATE TABLE IF NOT EXISTS gold_indicadores_educacao_municipio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cod_mun_ibge_7 TEXT NOT NULL,
+        ano INTEGER NOT NULL,
+        matriculas INTEGER,
+        docentes INTEGER,
+        escolas INTEGER,
+        taxa_matriculas_por_1000_hab REAL,
+        data_carga TEXT,
+        FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
+    );
+
+    -- Gold: PIB municipal por município/ano (IBGE SIDRA 5938)
+    CREATE TABLE IF NOT EXISTS gold_pib_municipio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cod_mun_ibge_7 TEXT NOT NULL,
+        ano INTEGER NOT NULL,
+        pib_total_mil_reais REAL,
+        pib_per_capita REAL,
+        data_carga TEXT,
+        UNIQUE(cod_mun_ibge_7, ano),
+        FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
+    );
+
+    -- Gold: transferências federais por município/ano (Portal da Transparência)
+    CREATE TABLE IF NOT EXISTS gold_transparencia_transferencias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cod_mun_ibge_7 TEXT NOT NULL,
+        ano INTEGER NOT NULL,
+        total_transferencias_reais REAL,
+        data_carga TEXT,
+        UNIQUE(cod_mun_ibge_7, ano),
+        FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_silver_pop_cod_ano ON silver_ibge_populacao(cod_mun_ibge_7, ano);
     CREATE INDEX IF NOT EXISTS idx_silver_datasus_cod_ano ON silver_datasus_indicadores(cod_mun_ibge_7, ano);
+    CREATE INDEX IF NOT EXISTS idx_silver_inep_cod_ano ON silver_inep_educacao(cod_mun_ibge_7, ano);
     CREATE INDEX IF NOT EXISTS idx_gold_cod_ano ON gold_indicadores_saude_municipio(cod_mun_ibge_7, ano);
+    CREATE INDEX IF NOT EXISTS idx_gold_educ_cod_ano ON gold_indicadores_educacao_municipio(cod_mun_ibge_7, ano);
+    CREATE INDEX IF NOT EXISTS idx_gold_pib_cod_ano ON gold_pib_municipio(cod_mun_ibge_7, ano);
+    CREATE INDEX IF NOT EXISTS idx_gold_transf_cod_ano ON gold_transparencia_transferencias(cod_mun_ibge_7, ano);
     """)
 
 
