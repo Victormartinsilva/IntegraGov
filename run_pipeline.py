@@ -66,9 +66,7 @@ def run_fase1(
         codigos = [int(x) for x in amostra_municipios]
     elif len(df_mun) > n_amostra:
         por_uf = max(1, n_amostra // 27)
-        df_amostra = df_mun.groupby("sigla_uf", group_keys=False).apply(
-            lambda g: g.head(por_uf)
-        ).head(n_amostra)
+        df_amostra = df_mun.groupby("sigla_uf", group_keys=False).head(por_uf).head(n_amostra)
         codigos = df_amostra["cod_mun_ibge_7"].astype(int).tolist()
         logger.info(
             "Amostra: %d municípios (%d UFs). Use --todos-municipios para todos.",
