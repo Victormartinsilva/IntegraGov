@@ -249,6 +249,37 @@ class GoldTransform:
                 )
             logger.info("Gold PIB: %d registros persistidos.", len(df))
 
+    def persistir_gold_cnes_no_banco(self, df: pd.DataFrame) -> None:
+        """Insere/atualiza tabela gold_cnes_municipio."""
+        if df.empty:
+            return
+        with get_connection() as conn:
+            init_schema(conn)
+            data_carga = datetime.now().isoformat()
+            anos = df["ano"].dropna().unique().tolist()
+            for a in anos:
+                conn.execute("DELETE FROM gold_cnes_municipio WHERE ano = ?", (int(a),))
+            for _, row in df.iterrows():
+                conn.execute(
+                    """
+                    INSERT INTO gold_cnes_municipio
+                    (cod_mun_ibge_7, ano, total_estabelecimentos, hospitais, ubs,
+                     leitos_totais, leitos_sus, data_carga)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["cod_mun_ibge_7"],
+                        int(row["ano"]),
+                        int(row.get("total_estabelecimentos", 0) or 0),
+                        int(row.get("hospitais", 0) or 0),
+                        int(row.get("ubs", 0) or 0),
+                        int(row.get("leitos_totais", 0) or 0),
+                        int(row.get("leitos_sus", 0) or 0),
+                        data_carga,
+                    ),
+                )
+            logger.info("Gold CNES: %d registros persistidos.", len(df))
+
     def persistir_gold_transparencia_no_banco(self, df: pd.DataFrame) -> None:
         """Insere/atualiza tabela gold_transparencia_transferencias."""
         if df.empty or "cod_mun_ibge_7" not in df.columns:

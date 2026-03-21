@@ -18,6 +18,7 @@ from src.connectors.ibge import IBGEConnector
 from src.connectors.datasus import DatasusConnector
 from src.connectors.inep import InepConnector
 from src.connectors.transparencia import TransparenciaConnector
+from src.connectors.cnes import CNESConnector
 from src.transform.silver import SilverTransform
 from src.transform.gold import GoldTransform
 from src.db import ensure_schema
@@ -37,14 +38,16 @@ def run_fase1(
     amostra_n: int | None = None,
     incluir_pib: bool = False,
     incluir_transparencia: bool = False,
+    incluir_cnes: bool = False,
 ):
     """
     Fase 1: MVP Saúde, Demografia, Educação.
-    Opcional: --incluir-pib (IBGE SIDRA 5938) e --incluir-transparencia (Portal da Transparência).
+    Opcional: --incluir-pib (IBGE SIDRA 5938), --incluir-transparencia (Portal da Transparência),
+    --incluir-cnes (CNES infraestrutura de saúde).
     """
     logger.info(
-        "Iniciando pipeline IntegraGov (ano=%s, todos_municipios=%s, pib=%s, transparencia=%s)",
-        ano, todos_municipios, incluir_pib, incluir_transparencia,
+        "Iniciando pipeline IntegraGov (ano=%s, todos_municipios=%s, pib=%s, transparencia=%s, cnes=%s)",
+        ano, todos_municipios, incluir_pib, incluir_transparencia, incluir_cnes,
     )
 
     ensure_schema()
@@ -108,6 +111,22 @@ def run_fase1(
             logger.info("INEP Censo Escolar sem dados para %d.", ano)
     except Exception as e:
         logger.warning("Falha INEP: %s", e)
+
+    # --- Bronze: CNES (estabelecimentos de saúde) ---
+    df_cnes = pd.DataFrame()
+    if incluir_cnes:
+        try:
+            cnes = CNESConnector(bronze_dir=BRONZE_DIR)
+            # Usa os mesmos códigos de município da amostra de população
+            codigos_cnes = codigos if codigos else df_mun["cod_mun_ibge_7"].tolist()
+            df_cnes = cnes.estabelecimentos_por_municipio(codigos_municipios=codigos_cnes, ano=ano)
+            if not df_cnes.empty:
+                cnes.salvar_bronze(df_cnes, ano)
+                logger.info("CNES: %d municípios com dados de infraestrutura.", len(df_cnes))
+            else:
+                logger.info("CNES: API indisponível ou sem dados. Tente sem --incluir-cnes.")
+        except Exception as e:
+            logger.warning("Falha CNES: %s", e)
 
     # --- Bronze: PIB Municipal (IBGE SIDRA 5938) ---
     df_pib = pd.DataFrame()
@@ -206,6 +225,12 @@ def run_fase1(
             gold_t.salvar_gold_parquet(df_gold_pib, "pib_municipio")
             logger.info("Gold PIB: %d municípios.", len(df_gold_pib))
 
+    # --- Gold: CNES ---
+    if not df_cnes.empty:
+        gold_t.persistir_gold_cnes_no_banco(df_cnes)
+        gold_t.salvar_gold_parquet(df_cnes, "cnes_municipio")
+        logger.info("Gold CNES: %d municípios.", len(df_cnes))
+
     # --- Gold: Transparência ---
     if not df_transf.empty:
         gold_t.persistir_gold_transparencia_no_banco(df_transf)
@@ -223,6 +248,7 @@ if __name__ == "__main__":
     parser.add_argument("--todos-municipios", action="store_true", help="Consultar todos os municípios")
     parser.add_argument("--incluir-pib", action="store_true", help="Incluir PIB municipal (IBGE SIDRA 5938)")
     parser.add_argument("--incluir-transparencia", action="store_true", help="Incluir transferências federais (Portal da Transparência, requer TRANSPARENCIA_API_KEY)")
+    parser.add_argument("--incluir-cnes", action="store_true", help="Incluir infraestrutura de saúde (CNES) — requer API apidadosabertos.saude.gov.br")
     args = parser.parse_args()
     run_fase1(
         ano=args.ano,
@@ -230,4 +256,5 @@ if __name__ == "__main__":
         amostra_n=args.amostra,
         incluir_pib=args.incluir_pib,
         incluir_transparencia=args.incluir_transparencia,
+        incluir_cnes=args.incluir_cnes,
     )

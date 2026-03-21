@@ -170,6 +170,24 @@ def load_transferencias(db_path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def load_cnes(db_path: str) -> pd.DataFrame:
+    try:
+        with sqlite3.connect(db_path) as conn:
+            tabelas = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+            if "gold_cnes_municipio" not in tabelas:
+                return pd.DataFrame()
+        return _load_sql(db_path, """
+            SELECT g.cod_mun_ibge_7, m.nome_municipio, m.sigla_uf, g.ano,
+                   g.total_estabelecimentos, g.hospitais, g.ubs,
+                   g.leitos_totais, g.leitos_sus, g.data_carga
+            FROM gold_cnes_municipio g
+            LEFT JOIN dim_municipio m ON m.cod_mun_ibge_7 = g.cod_mun_ibge_7
+            ORDER BY g.total_estabelecimentos DESC
+        """)
+    except Exception:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=3600)
 def load_centroides() -> pd.DataFrame:
     try:
@@ -269,7 +287,7 @@ def _kpi_row(kpis: list[tuple]) -> None:
             cols[i].metric(label, value)
 
 
-def tab_visao_geral(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, df_t: pd.DataFrame) -> None:
+def tab_visao_geral(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, df_t: pd.DataFrame, df_cnes: pd.DataFrame) -> None:
     n_mun = df_s["cod_mun_ibge_7"].nunique() if not df_s.empty else 0
     n_ufs = df_s["sigla_uf"].nunique() if not df_s.empty else 0
     pop = int(df_s.groupby("cod_mun_ibge_7")["populacao"].max().sum()) if not df_s.empty and "populacao" in df_s.columns else 0
@@ -296,14 +314,14 @@ def tab_visao_geral(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, 
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown("**🏥 Saúde**")
-        if not df_s.empty:
-            ob = int(df_s["total_obitos"].fillna(0).sum()) if "total_obitos" in df_s.columns else 0
-            nv = int(df_s["nascidos_vivos"].fillna(0).sum()) if "nascidos_vivos" in df_s.columns else 0
-            st.metric("Óbitos", f"{ob:,}")
-            st.metric("Nascidos vivos", f"{nv:,}")
-            if ob == 0:
-                st.caption("⚠️ Instale `pysus` para óbitos/nascimentos")
+        st.markdown("**🏥 Saúde (CNES)**")
+        if not df_cnes.empty:
+            est = int(df_cnes["total_estabelecimentos"].fillna(0).sum()) if "total_estabelecimentos" in df_cnes.columns else 0
+            leitos = int(df_cnes["leitos_totais"].fillna(0).sum()) if "leitos_totais" in df_cnes.columns else 0
+            st.metric("Estabelecimentos", f"{est:,}")
+            st.metric("Leitos", f"{leitos:,}")
+        elif not df_s.empty:
+            st.caption("Execute com `--incluir-cnes` para dados do CNES.")
         else:
             st.caption("Execute o pipeline para carregar dados.")
     with c2:
@@ -347,45 +365,61 @@ def tab_visao_geral(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, 
     st.markdown(badges, unsafe_allow_html=True)
 
 
-def tab_saude(df_s: pd.DataFrame) -> None:
+def tab_saude(df_s: pd.DataFrame, df_cnes: pd.DataFrame) -> None:
+    """Aba de Saúde: população (IBGE) + infraestrutura de saúde (CNES)."""
     if df_s.empty:
-        st.info("Sem dados de saúde. Execute: `python run_pipeline.py --ano 2024`")
+        st.info("Sem dados. Execute: `python run_pipeline.py --ano 2024`")
         return
 
-    ob = int(df_s["total_obitos"].fillna(0).sum()) if "total_obitos" in df_s.columns else 0
-    nv = int(df_s["nascidos_vivos"].fillna(0).sum()) if "nascidos_vivos" in df_s.columns else 0
-    n_mun = df_s["cod_mun_ibge_7"].nunique()
     pop = int(df_s.groupby("cod_mun_ibge_7")["populacao"].max().sum()) if "populacao" in df_s.columns else 0
+    n_mun = df_s["cod_mun_ibge_7"].nunique()
 
-    _kpi_row([
-        ("Municípios", f"{n_mun:,}"),
-        ("População", f"{pop:,}"),
-        ("Óbitos registrados", f"{ob:,}"),
-        ("Nascidos vivos", f"{nv:,}"),
-    ])
+    tem_cnes = not df_cnes.empty
 
-    sem_saude = ob == 0 and nv == 0
-    if sem_saude:
-        st.warning("⚠️ Óbitos e nascidos vivos zerados. Instale PySUS: `pip install pysus` e reexecute o pipeline.")
-        st.info("O DATASUS disponibiliza esses dados via FTP. O PySUS facilita o acesso.")
-
-    st.divider()
-    if not sem_saude:
+    if tem_cnes:
+        total_est = int(df_cnes["total_estabelecimentos"].fillna(0).sum())
+        total_hosp = int(df_cnes["hospitais"].fillna(0).sum())
+        total_leitos = int(df_cnes["leitos_totais"].fillna(0).sum())
+        _kpi_row([
+            ("Municípios", f"{n_mun:,}"),
+            ("População", f"{pop:,}"),
+            ("Estabelecimentos de saúde", f"{total_est:,}"),
+            ("Leitos hospitalares", f"{total_leitos:,}"),
+        ])
+        st.divider()
         col1, col2 = st.columns(2)
         with col1:
-            _chart_top_bar(df_s, "taxa_obitos_100k", "nome_municipio", "💀 Taxa de óbitos (por 100k hab.) – Top 10", COR_VERMELHO, fmt=",.1f")
+            _chart_top_bar(df_cnes, "total_estabelecimentos", "nome_municipio",
+                           "🏥 Mais estabelecimentos de saúde – Top 10", COR_CYAN)
         with col2:
-            _chart_top_bar(df_s, "nascidos_vivos", "nome_municipio", "👶 Nascidos vivos – Top 10", COR_VERDE)
+            _chart_top_bar(df_cnes, "leitos_totais", "nome_municipio",
+                           "🛏️ Mais leitos hospitalares – Top 10", COR_AZUL)
+        st.divider()
+        col1, col2 = st.columns(2)
+        with col1:
+            _chart_top_bar(df_cnes, "ubs", "nome_municipio",
+                           "🏠 Unidades Básicas de Saúde – Top 10", COR_VERDE)
+        with col2:
+            _chart_scatter(df_cnes, "total_estabelecimentos", "leitos_totais", "nome_municipio",
+                           "Estabelecimentos × Leitos", COR_CYAN,
+                           xlabel="Estabelecimentos", ylabel="Leitos")
+    else:
+        _kpi_row([
+            ("Municípios", f"{n_mun:,}"),
+            ("População", f"{pop:,}"),
+        ])
+        st.info(
+            "**Dados de infraestrutura de saúde (CNES) não carregados.**\n\n"
+            "Execute o pipeline com `--incluir-cnes` para incluir estabelecimentos e leitos do CNES:\n\n"
+            "`python run_pipeline.py --ano 2024 --incluir-cnes`\n\n"
+            "O CNES (Cadastro Nacional de Estabelecimentos de Saúde) contém dados de hospitais, "
+            "UBS, UPA e leitos por município — sem necessidade de PySUS."
+        )
         st.divider()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        _chart_top_bar(df_s, "populacao", "nome_municipio", "👥 Maiores populações", COR_AZUL)
-    with col2:
-        if not sem_saude:
-            _chart_scatter(df_s, "populacao", "total_obitos", "nome_municipio",
-                           "Relação: População × Óbitos", COR_CYAN,
-                           xlabel="População", ylabel="Óbitos")
+    # Sempre mostra ranking de população
+    st.markdown("#### 👥 Municípios por população")
+    _chart_top_bar(df_s, "populacao", "nome_municipio", "Top 10 municípios por população", COR_AZUL)
 
 
 def tab_educacao(df_e: pd.DataFrame) -> None:
@@ -463,7 +497,7 @@ def tab_pib(df_p: pd.DataFrame) -> None:
                    xlabel="PIB total (R$ mil)", ylabel="PIB per capita (R$)")
 
 
-def tab_mapa(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, centroides: pd.DataFrame) -> None:
+def tab_mapa(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, df_cnes: pd.DataFrame, centroides: pd.DataFrame) -> None:
     if not FOLIUM_AVAILABLE:
         st.info("Instale folium para ver o mapa: `pip install folium streamlit-folium`")
         return
@@ -478,6 +512,8 @@ def tab_mapa(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, centroi
         views_disp.append("📚 Educação")
     if not df_p.empty:
         views_disp.append("💰 PIB Municipal")
+    if not df_cnes.empty:
+        views_disp.append("🏥 CNES (Infraestrutura)")
 
     if not views_disp:
         st.info("Sem dados para exibir no mapa. Execute o pipeline primeiro.")
@@ -503,11 +539,19 @@ def tab_mapa(df_s: pd.DataFrame, df_e: pd.DataFrame, df_p: pd.DataFrame, centroi
                 ("Escolas", "escolas"),
                 ("Taxa matrículas (por 1k hab.)", "taxa_matriculas_por_1000_hab"),
             ]
-        else:
+        elif "PIB" in view_sel:
             df_map_base = df_p
             opcoes_ind = [
                 ("PIB total (R$ mil)", "pib_total_mil_reais"),
                 ("PIB per capita (R$)", "pib_per_capita"),
+            ]
+        else:  # CNES
+            df_map_base = df_cnes
+            opcoes_ind = [
+                ("Estabelecimentos de saúde", "total_estabelecimentos"),
+                ("Leitos hospitalares", "leitos_totais"),
+                ("Hospitais", "hospitais"),
+                ("UBS", "ubs"),
             ]
         opcoes_disp = [(l, c) for l, c in opcoes_ind if c in df_map_base.columns]
         if not opcoes_disp:
@@ -667,6 +711,7 @@ def main() -> None:
         df_e = load_educacao(db_path)
         df_p = load_pib(db_path)
         df_t = load_transferencias(db_path)
+        df_cnes = load_cnes(db_path)
         centroides = load_centroides()
 
     # Sidebar: filtros
@@ -693,14 +738,15 @@ def main() -> None:
     df_e_f = apply_filters(df_e, uf, ano)
     df_p_f = apply_filters(df_p, uf, ano)
     df_t_f = apply_filters(df_t, uf, ano)
+    df_cnes_f = apply_filters(df_cnes, uf, ano)
 
     # Sidebar: status das fontes
     st.sidebar.divider()
     st.sidebar.markdown("### 📡 Status das fontes")
     status = [
         ("IBGE (municípios/pop.)", not df_s.empty),
-        ("DATASUS (saúde)", not df_s.empty and (df_s.get("total_obitos", pd.Series([0])).sum() > 0 if not df_s.empty else False)),
         ("INEP (educação)", not df_e.empty),
+        ("CNES (Infra. saúde)", not df_cnes.empty),
         ("IBGE (PIB)", not df_p.empty),
         ("Transparência", not df_t.empty),
     ]
@@ -736,15 +782,15 @@ def main() -> None:
     ])
 
     with tabs[0]:
-        tab_visao_geral(df_s_f, df_e_f, df_p_f, df_t_f)
+        tab_visao_geral(df_s_f, df_e_f, df_p_f, df_t_f, df_cnes_f)
     with tabs[1]:
-        tab_saude(df_s_f)
+        tab_saude(df_s_f, df_cnes_f)
     with tabs[2]:
         tab_educacao(df_e_f)
     with tabs[3]:
         tab_pib(df_p_f)
     with tabs[4]:
-        tab_mapa(df_s_f, df_e_f, df_p_f, centroides)
+        tab_mapa(df_s_f, df_e_f, df_p_f, df_cnes_f, centroides)
     with tabs[5]:
         tab_dados_brutos(db_path, uf, ano)
 

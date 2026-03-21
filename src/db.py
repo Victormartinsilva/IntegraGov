@@ -124,6 +124,21 @@ def init_schema(conn: sqlite3.Connection) -> None:
         FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
     );
 
+    -- Gold: infraestrutura de saúde por município/ano (CNES)
+    CREATE TABLE IF NOT EXISTS gold_cnes_municipio (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cod_mun_ibge_7 TEXT NOT NULL,
+        ano INTEGER NOT NULL,
+        total_estabelecimentos INTEGER,
+        hospitais INTEGER,
+        ubs INTEGER,
+        leitos_totais INTEGER,
+        leitos_sus INTEGER,
+        data_carga TEXT,
+        UNIQUE(cod_mun_ibge_7, ano),
+        FOREIGN KEY (cod_mun_ibge_7) REFERENCES dim_municipio(cod_mun_ibge_7)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_silver_pop_cod_ano ON silver_ibge_populacao(cod_mun_ibge_7, ano);
     CREATE INDEX IF NOT EXISTS idx_silver_datasus_cod_ano ON silver_datasus_indicadores(cod_mun_ibge_7, ano);
     CREATE INDEX IF NOT EXISTS idx_silver_inep_cod_ano ON silver_inep_educacao(cod_mun_ibge_7, ano);
@@ -131,6 +146,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_gold_educ_cod_ano ON gold_indicadores_educacao_municipio(cod_mun_ibge_7, ano);
     CREATE INDEX IF NOT EXISTS idx_gold_pib_cod_ano ON gold_pib_municipio(cod_mun_ibge_7, ano);
     CREATE INDEX IF NOT EXISTS idx_gold_transf_cod_ano ON gold_transparencia_transferencias(cod_mun_ibge_7, ano);
+    CREATE INDEX IF NOT EXISTS idx_gold_cnes_cod_ano ON gold_cnes_municipio(cod_mun_ibge_7, ano);
     """)
 
 
