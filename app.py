@@ -88,7 +88,7 @@ PLOTLY_FONT = "#c0cfe0"
 
 
 def _plotly_layout(height: int = 360, **kwargs) -> dict:
-    return dict(
+    base = dict(
         height=height,
         plot_bgcolor=PLOTLY_BG,
         paper_bgcolor=PLOTLY_PAPER,
@@ -97,8 +97,9 @@ def _plotly_layout(height: int = 360, **kwargs) -> dict:
         showlegend=False,
         xaxis_title="",
         yaxis_title="",
-        **kwargs,
     )
+    base.update(kwargs)
+    return base
 
 
 # ---------------------------------------------------------------------------
@@ -363,25 +364,28 @@ def tab_saude(df_s: pd.DataFrame) -> None:
         ("Nascidos vivos", f"{nv:,}"),
     ])
 
-    if ob == 0 and nv == 0:
+    sem_saude = ob == 0 and nv == 0
+    if sem_saude:
         st.warning("⚠️ Óbitos e nascidos vivos zerados. Instale PySUS: `pip install pysus` e reexecute o pipeline.")
         st.info("O DATASUS disponibiliza esses dados via FTP. O PySUS facilita o acesso.")
 
     st.divider()
-    col1, col2 = st.columns(2)
-    with col1:
-        _chart_top_bar(df_s, "taxa_obitos_100k", "nome_municipio", "💀 Taxa de óbitos (por 100k hab.) – Top 10", COR_VERMELHO, fmt=",.1f")
-    with col2:
-        _chart_top_bar(df_s, "nascidos_vivos", "nome_municipio", "👶 Nascidos vivos – Top 10", COR_VERDE)
+    if not sem_saude:
+        col1, col2 = st.columns(2)
+        with col1:
+            _chart_top_bar(df_s, "taxa_obitos_100k", "nome_municipio", "💀 Taxa de óbitos (por 100k hab.) – Top 10", COR_VERMELHO, fmt=",.1f")
+        with col2:
+            _chart_top_bar(df_s, "nascidos_vivos", "nome_municipio", "👶 Nascidos vivos – Top 10", COR_VERDE)
+        st.divider()
 
-    st.divider()
     col1, col2 = st.columns(2)
     with col1:
         _chart_top_bar(df_s, "populacao", "nome_municipio", "👥 Maiores populações", COR_AZUL)
     with col2:
-        _chart_scatter(df_s, "populacao", "total_obitos", "nome_municipio",
-                       "Relação: População × Óbitos", COR_CYAN,
-                       xlabel="População", ylabel="Óbitos")
+        if not sem_saude:
+            _chart_scatter(df_s, "populacao", "total_obitos", "nome_municipio",
+                           "Relação: População × Óbitos", COR_CYAN,
+                           xlabel="População", ylabel="Óbitos")
 
 
 def tab_educacao(df_e: pd.DataFrame) -> None:
